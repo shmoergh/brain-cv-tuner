@@ -131,6 +131,68 @@ cv_out.set_voltage_calibrated(channel, volts);
 
 If a legacy firmware stored calibration in a custom/non-SDK flash location, that data is not automatically imported. A one-time migration firmware is needed to read the old format and write `CvCalibrationV1` through Brain SDK storage APIs.
 
+### 6) Add app-level persistent data (app blob)
+
+Use Brain SDK `app_blob` APIs for firmware-specific settings/state that should persist.
+
+- APIs: `read_app_blob(...)`, `write_app_blob(...)`, `clear_app_blob()`
+- Storage model: one SDK-managed app-data sector (single blob record)
+- Max payload: `4096 - 12 - 4 = 4080` bytes
+
+Recommended pattern:
+
+1. Define a versioned app state struct.
+2. On boot, call `read_app_blob(...)`.
+3. If status is `kNotFound` or `kCorrupt`, initialize defaults.
+4. If status is `kOk`, validate `actual_size` and your own app schema version.
+5. After settings changes, write back via `write_app_blob(...)`.
+
+Example:
+
+```cpp
+#include "brain-storage/storage.h"
+
+struct AppStateV1 {
+	uint32_t schema_version;
+	float last_tempo_bpm;
+	uint8_t mode;
+};
+
+constexpr uint32_t kAppStateSchemaV1 = 1;
+
+AppStateV1 state{};
+size_t actual_size = 0;
+
+brain::storage::StorageStatus load_status =
+	brain::storage::read_app_blob(&state, sizeof(state), &actual_size);
+
+if (load_status == brain::storage::StorageStatus::kOk &&
+	actual_size == sizeof(state) &&
+	state.schema_version == kAppStateSchemaV1) {
+	// Loaded successfully.
+} else {
+	// Missing/corrupt/mismatched version: use defaults.
+	state.schema_version = kAppStateSchemaV1;
+	state.last_tempo_bpm = 120.0f;
+	state.mode = 0;
+}
+
+// Later, when persisting:
+brain::storage::StorageStatus save_status =
+	brain::storage::write_app_blob(&state, sizeof(state));
+```
+
+Status handling tips:
+
+- `kTooLarge` on read: stored blob is larger than your read buffer.
+- `kTooLarge` on write: payload exceeds app blob capacity.
+- `kUnprotectedLayout`: firmware image was built without storage reservation.
+
+Important:
+
+- Calibration (`CvCalibrationV1`) is device-level and shared across SDK-based firmwares.
+- App blob data is firmware-level by design. Use your own schema versioning and migration logic as the app evolves.
+
 ## Development
 
 This project includes brain-sdk as a git submodule. To update the SDK:
