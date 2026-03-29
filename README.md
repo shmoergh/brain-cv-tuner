@@ -47,7 +47,7 @@ Notes:
 - Only the active channel outputs the selected calibration voltage. The inactive channel is held at `0V`.
 - After changing step or channel, pots use pickup behavior. You may need to turn a pot until it "catches" before it starts changing the offset.
 
-### LED Meaning
+### LED Feedback
 
 - `LED1`: channel A is active
 - `LED2`: channel B is active
