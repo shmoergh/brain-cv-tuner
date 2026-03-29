@@ -74,6 +74,62 @@ Notes:
 - Calibration is saved only when you perform the explicit `A+B` hold.
 - Saved values persist across power cycles and firmware updates (as long as calibration storage is preserved).
 - If save fails, `LED4` shows failure pulses and `LED3` remains on.
+- Flashing firmware that does not reserve Brain SDK storage sectors can overwrite calibration data.
+
+## Migrating Older Firmwares to Brain SDK Storage
+
+Use this checklist when upgrading an older Brain firmware so calibration written by this tuner persists and is reused.
+
+### 1) Reserve storage sectors in CMake
+
+Add the storage reservation helper before `pico_sdk_init()`:
+
+```cmake
+include(brain-sdk/cmake/brain-storage-reserve-flash.cmake)
+brain_storage_configure_flash_reservation()
+```
+
+This keeps the SDK calibration/app sectors outside the firmware image.
+
+### 2) Load calibration at startup
+
+In your firmware init path:
+
+```cpp
+#include "brain-io/audio-cv-out.h"
+
+brain::io::AudioCvOut cv_out;
+cv_out.init();
+cv_out.set_coupling(brain::io::AudioCvOutChannel::kChannelA, brain::io::AudioCvOutCoupling::kDcCoupled);
+cv_out.set_coupling(brain::io::AudioCvOutChannel::kChannelB, brain::io::AudioCvOutCoupling::kDcCoupled);
+
+// Optional: continue with raw output if missing/corrupt.
+cv_out.load_calibration_from_flash();
+```
+
+### 3) Switch output calls to calibrated writes
+
+Replace raw calls:
+
+```cpp
+cv_out.set_voltage(channel, volts);
+```
+
+with:
+
+```cpp
+cv_out.set_voltage_calibrated(channel, volts);
+```
+
+### 4) If your firmware writes calibration, use SDK APIs only
+
+- Use `brain::storage::write_cv_calibration(...)` and verify with `read_cv_calibration(...)`.
+- Keep the SDK contract: `CvCalibrationV1` stores offsets for `1V..10V` only (`0V` is reference-only).
+- Do not write raw flash directly for calibration.
+
+### 5) Migration caveat for very old firmwares
+
+If a legacy firmware stored calibration in a custom/non-SDK flash location, that data is not automatically imported. A one-time migration firmware is needed to read the old format and write `CvCalibrationV1` through Brain SDK storage APIs.
 
 ## Development
 
