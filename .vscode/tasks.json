@@ -1,0 +1,36 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Configure Pico (RP2040)",
+			"type": "shell",
+			"command": "cmake -S ${workspaceFolder} -B ${workspaceFolder}/build-pico -DPICO_BOARD=pico -DPICO_PLATFORM=rp2040",
+			"problemMatcher": []
+		},
+		{
+			"label": "Build Pico (RP2040)",
+			"type": "shell",
+			"dependsOn": "Configure Pico (RP2040)",
+			"command": "cmake --build ${workspaceFolder}/build-pico",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "Configure Pico 2 (RP2350)",
+			"type": "shell",
+			"command": "cmake -S ${workspaceFolder} -B ${workspaceFolder}/build-pico-2 -DPICO_BOARD=pico2 -DPICO_PLATFORM=rp2350-arm-s",
+			"problemMatcher": []
+		},
+		{
+			"label": "Build Pico 2 (RP2350)",
+			"type": "shell",
+			"dependsOn": "Configure Pico 2 (RP2350)",
+			"command": "cmake --build ${workspaceFolder}/build-pico-2",
+			"group": "build",
+			"problemMatcher": []
+		}
+	]
+}
