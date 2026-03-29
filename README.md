@@ -1,8 +1,6 @@
 # Brain CV Tuner
 
-Firmware for calibrating Brain CV outputs with a tuner-guided workflow.
-It lets you calibrate channel A and B across `0V..10V` in 1V steps and save the
-result to Brain SDK calibration storage.
+Firmware for calibrating Brain CV outputs with a tuner-guided workflow. It lets you calibrate channel A and B across `0V..10V` in 1V steps for precise 1V/oct tracking. The calibration values are saved to Brain SDK calibration storage and persisted across firmwares which use the Brain SDK. This allows a single calibration to be automatically reused between different firmwares.
 
 ## Build
 
