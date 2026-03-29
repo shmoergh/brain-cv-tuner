@@ -93,7 +93,7 @@ This keeps the SDK calibration/app sectors outside the firmware image.
 
 ### 2) Load calibration at startup
 
-In your firmware init path:
+If you want to use calibrated values in your firmware, add this in your init section:
 
 ```cpp
 #include "brain-io/audio-cv-out.h"
