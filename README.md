@@ -1,4 +1,4 @@
-# brain-cv-tuner
+# Brain CV Tuner
 
 Firmware for calibrating Brain CV outputs with a tuner-guided workflow.
 It lets you calibrate channel A and B across `0V..10V` in 1V steps and save the
