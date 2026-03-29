@@ -82,7 +82,7 @@ Use this checklist when upgrading an older Brain firmware so calibration written
 
 ### 1) Reserve storage sectors in CMake
 
-Add the storage reservation helper before `pico_sdk_init()`:
+Add the storage reservation helper before `pico_sdk_init()` in your main CMakeList.txt:
 
 ```cmake
 include(brain-sdk/cmake/brain-storage-reserve-flash.cmake)
