@@ -8,21 +8,11 @@
 
 namespace {
 
-using ::AudioCvOutChannel;
-using ::AudioCvOutRange;
-using ::Brain;
-using ::BrainInitStatus;
-using ::Button;
-using ::CvCalibrationV1;
-using ::LedMode;
-using ::PotsConfig;
-using ::StorageStatus;
-
 class CalibrationApp {
 	public:
 		CalibrationApp() :
-			button_a_(BRAIN_BUTTON_1, 35, kALongPressMs),
-			button_b_(BRAIN_BUTTON_2, 35, kALongPressMs) {}
+			button_a_(kButtonPin1, 35, kALongPressMs),
+			button_b_(kButtonPin2, 35, kALongPressMs) {}
 
 		void run() {
 			init();
@@ -60,7 +50,7 @@ class CalibrationApp {
 		bool dirty_ = false;
 		bool layout_protected_ = false;
 
-		AudioCvOutChannel active_channel_ = AudioCvOutChannel::kChannelA;
+		AudioCvOutChannel active_channel_ = kOutputsChannelA;
 		int active_step_ = 0;
 
 		int coarse_offset_lsb_ = 0;
@@ -121,25 +111,25 @@ class CalibrationApp {
 
 		static const char* to_string(StorageStatus status) {
 			switch (status) {
-				case StorageStatus::kOk:
+				case kStorageStatusOk:
 					return "kOk";
-				case StorageStatus::kInvalidArgument:
+				case kStorageStatusInvalidArgument:
 					return "kInvalidArgument";
-				case StorageStatus::kNotFound:
+				case kStorageStatusNotFound:
 					return "kNotFound";
-				case StorageStatus::kCorrupt:
+				case kStorageStatusCorrupt:
 					return "kCorrupt";
-				case StorageStatus::kOutOfBounds:
+				case kStorageStatusOutOfBounds:
 					return "kOutOfBounds";
-				case StorageStatus::kTooLarge:
+				case kStorageStatusTooLarge:
 					return "kTooLarge";
-				case StorageStatus::kUnprotectedLayout:
+				case kStorageStatusUnprotectedLayout:
 					return "kUnprotectedLayout";
-				case StorageStatus::kFlashError:
+				case kStorageStatusFlashError:
 					return "kFlashError";
-				case StorageStatus::kTimeout:
+				case kStorageStatusTimeout:
 					return "kTimeout";
-				case StorageStatus::kNotPermitted:
+				case kStorageStatusNotPermitted:
 					return "kNotPermitted";
 				default:
 					return "kUnknown";
@@ -175,17 +165,17 @@ class CalibrationApp {
 				std::printf("[ERROR] Outputs init failed\n");
 			}
 			brain_.outputs.set_output_range(
-				AudioCvOutChannel::kChannelA, AudioCvOutRange::kRange0To10V);
+				kOutputsChannelA, kOutputsRange0To10V);
 			brain_.outputs.set_output_range(
-				AudioCvOutChannel::kChannelB, AudioCvOutRange::kRange0To10V);
-			brain_.outputs.set_voltage_millivolts(AudioCvOutChannel::kChannelA, 0);
-			brain_.outputs.set_voltage_millivolts(AudioCvOutChannel::kChannelB, 0);
+				kOutputsChannelB, kOutputsRange0To10V);
+			brain_.outputs.set_voltage_millivolts(kOutputsChannelA, 0);
+			brain_.outputs.set_voltage_millivolts(kOutputsChannelB, 0);
 
 			const StorageStatus load_status = brain_.storage.read_cv_calibration(&working_cal_);
-			if (load_status == StorageStatus::kOk) {
+			if (load_status == kStorageStatusOk) {
 				std::printf("Loaded calibration from flash\n");
 			} else if (
-				load_status == StorageStatus::kNotFound || load_status == StorageStatus::kCorrupt) {
+				load_status == kStorageStatusNotFound || load_status == kStorageStatusCorrupt) {
 				std::memset(&working_cal_, 0, sizeof(working_cal_));
 				std::printf(
 					"Calibration missing/corrupt (%s), using zero table\n",
@@ -316,15 +306,15 @@ class CalibrationApp {
 		}
 
 		void toggle_channel() {
-			if (active_channel_ == AudioCvOutChannel::kChannelA) {
-				active_channel_ = AudioCvOutChannel::kChannelB;
+			if (active_channel_ == kOutputsChannelA) {
+				active_channel_ = kOutputsChannelB;
 			} else {
-				active_channel_ = AudioCvOutChannel::kChannelA;
+				active_channel_ = kOutputsChannelA;
 			}
 			enter_context();
 			std::printf(
 				"Active channel -> %s\n",
-				active_channel_ == AudioCvOutChannel::kChannelA ? "A" : "B");
+				active_channel_ == kOutputsChannelA ? "A" : "B");
 		}
 
 		void pulse_step_led() {
@@ -355,7 +345,7 @@ class CalibrationApp {
 			}
 
 			const StorageStatus write_status = brain_.storage.write_cv_calibration(&working_cal_);
-			if (write_status != StorageStatus::kOk) {
+			if (write_status != kStorageStatusOk) {
 				std::printf("Save failed on write: %s\n", to_string(write_status));
 				pulse_save_failure();
 				return;
@@ -363,7 +353,7 @@ class CalibrationApp {
 
 			CvCalibrationV1 verify{};
 			const StorageStatus verify_status = brain_.storage.read_cv_calibration(&verify);
-			if (verify_status != StorageStatus::kOk) {
+			if (verify_status != kStorageStatusOk) {
 				std::printf("Save verify read failed: %s\n", to_string(verify_status));
 				pulse_save_failure();
 				return;
@@ -385,7 +375,7 @@ class CalibrationApp {
 				return nullptr;
 			}
 			const int idx = active_step_ - 1;
-			if (active_channel_ == AudioCvOutChannel::kChannelA) {
+			if (active_channel_ == kOutputsChannelA) {
 				return &working_cal_.a_offset_lsb[idx];
 			}
 			return &working_cal_.b_offset_lsb[idx];
@@ -396,7 +386,7 @@ class CalibrationApp {
 				return 0;
 			}
 			const int idx = active_step_ - 1;
-			if (active_channel_ == AudioCvOutChannel::kChannelA) {
+			if (active_channel_ == kOutputsChannelA) {
 				return working_cal_.a_offset_lsb[idx];
 			}
 			return working_cal_.b_offset_lsb[idx];
@@ -504,19 +494,19 @@ class CalibrationApp {
 			brain_.outputs.set_calibration(working_cal_);
 
 			const int32_t step_millivolts = static_cast<int32_t>(active_step_) * 1000;
-			if (active_channel_ == AudioCvOutChannel::kChannelA) {
+			if (active_channel_ == kOutputsChannelA) {
 				brain_.outputs.set_voltage_calibrated_millivolts(
-					AudioCvOutChannel::kChannelA, step_millivolts);
-				brain_.outputs.set_voltage_millivolts(AudioCvOutChannel::kChannelB, 0);
+					kOutputsChannelA, step_millivolts);
+				brain_.outputs.set_voltage_millivolts(kOutputsChannelB, 0);
 			} else {
 				brain_.outputs.set_voltage_calibrated_millivolts(
-					AudioCvOutChannel::kChannelB, step_millivolts);
-				brain_.outputs.set_voltage_millivolts(AudioCvOutChannel::kChannelA, 0);
+					kOutputsChannelB, step_millivolts);
+				brain_.outputs.set_voltage_millivolts(kOutputsChannelA, 0);
 			}
 		}
 
 		void update_status_leds() {
-			if (active_channel_ == AudioCvOutChannel::kChannelA) {
+			if (active_channel_ == kOutputsChannelA) {
 				brain_.leds.on(kLedChannelA);
 				brain_.leds.off(kLedChannelB);
 			} else {
