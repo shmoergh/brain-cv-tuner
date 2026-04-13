@@ -1,41 +1,18 @@
 #include <pico/stdlib.h>
 
-#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 
-#include "brain-common/brain-common.h"
-#include "brain-io/audio-cv-out.h"
-#include "brain-storage/storage.h"
-#include "brain-ui/button.h"
-#include "brain-ui/led.h"
-#include "brain-ui/pots.h"
+#include "brain/brain.h"
 
 namespace {
-
-using brain::io::AudioCvOutChannel;
-using brain::io::AudioCvOutCoupling;
-using brain::storage::CvCalibrationV1;
-using brain::storage::StorageStatus;
-using brain::ui::Button;
-using brain::ui::Led;
-using brain::ui::Pots;
-using brain::ui::PotsConfig;
 
 class CalibrationApp {
 	public:
 		CalibrationApp() :
-			leds_{
-				Led(BRAIN_LED_1, true),
-				Led(BRAIN_LED_2, true),
-				Led(BRAIN_LED_3, true),
-				Led(BRAIN_LED_4, true),
-				Led(BRAIN_LED_5, true),
-				Led(BRAIN_LED_6, true),
-			},
-			button_a_(BRAIN_BUTTON_1, 35, kALongPressMs),
-			button_b_(BRAIN_BUTTON_2, 35, kALongPressMs) {}
+			button_a_(kButtonPin1, 35, kALongPressMs),
+			button_b_(kButtonPin2, 35, kALongPressMs) {}
 
 		void run() {
 			init();
@@ -65,17 +42,15 @@ class CalibrationApp {
 		static constexpr uint8_t kLedLayoutProtected = 4;
 		static constexpr uint8_t kLedStepPulse = 5;
 
-		std::array<Led, 6> leds_;
+		Brain brain_;
 		Button button_a_;
 		Button button_b_;
-		Pots pots_;
-		brain::io::AudioCvOut cv_out_;
 
 		CvCalibrationV1 working_cal_{};
 		bool dirty_ = false;
 		bool layout_protected_ = false;
 
-		AudioCvOutChannel active_channel_ = AudioCvOutChannel::kChannelA;
+		AudioCvOutChannel active_channel_ = kOutputsChannelA;
 		int active_step_ = 0;
 
 		int coarse_offset_lsb_ = 0;
@@ -136,25 +111,25 @@ class CalibrationApp {
 
 		static const char* to_string(StorageStatus status) {
 			switch (status) {
-				case StorageStatus::kOk:
+				case kStorageStatusOk:
 					return "kOk";
-				case StorageStatus::kInvalidArgument:
+				case kStorageStatusInvalidArgument:
 					return "kInvalidArgument";
-				case StorageStatus::kNotFound:
+				case kStorageStatusNotFound:
 					return "kNotFound";
-				case StorageStatus::kCorrupt:
+				case kStorageStatusCorrupt:
 					return "kCorrupt";
-				case StorageStatus::kOutOfBounds:
+				case kStorageStatusOutOfBounds:
 					return "kOutOfBounds";
-				case StorageStatus::kTooLarge:
+				case kStorageStatusTooLarge:
 					return "kTooLarge";
-				case StorageStatus::kUnprotectedLayout:
+				case kStorageStatusUnprotectedLayout:
 					return "kUnprotectedLayout";
-				case StorageStatus::kFlashError:
+				case kStorageStatusFlashError:
 					return "kFlashError";
-				case StorageStatus::kTimeout:
+				case kStorageStatusTimeout:
 					return "kTimeout";
-				case StorageStatus::kNotPermitted:
+				case kStorageStatusNotPermitted:
 					return "kNotPermitted";
 				default:
 					return "kUnknown";
@@ -164,10 +139,11 @@ class CalibrationApp {
 		void init() {
 			stdio_init_all();
 
-			for (auto& led : leds_) {
-				led.init();
-				led.off();
+			const BrainInitStatus leds_status = brain_.init_leds(LedMode::kSimple);
+			if (!brain_init_succeeded(leds_status)) {
+				std::printf("[ERROR] Leds init failed\n");
 			}
+			brain_.leds.off_all();
 
 			button_a_.init(true);
 			button_b_.init(true);
@@ -176,24 +152,30 @@ class CalibrationApp {
 			button_b_.set_on_press([this]() { on_b_press(); });
 			button_b_.set_on_release([this]() { on_b_release(); });
 
-			PotsConfig pots_cfg = brain::ui::create_default_config(3, 12);
+			PotsConfig pots_cfg = create_default_pots_config(3, 12);
 			pots_cfg.change_threshold = 0;
-			pots_.init(pots_cfg);
-			pots_.scan();
-
-			if (!cv_out_.init()) {
-				std::printf("[ERROR] AudioCvOut init failed\n");
+			const BrainInitStatus pots_status = brain_.init_pots(pots_cfg);
+			if (!brain_init_succeeded(pots_status)) {
+				std::printf("[ERROR] Pots init failed\n");
 			}
-			cv_out_.set_coupling(AudioCvOutChannel::kChannelA, AudioCvOutCoupling::kDcCoupled);
-			cv_out_.set_coupling(AudioCvOutChannel::kChannelB, AudioCvOutCoupling::kDcCoupled);
-			cv_out_.set_voltage(AudioCvOutChannel::kChannelA, 0.0f);
-			cv_out_.set_voltage(AudioCvOutChannel::kChannelB, 0.0f);
+			brain_.pots.scan();
 
-			const StorageStatus load_status = brain::storage::read_cv_calibration(&working_cal_);
-			if (load_status == StorageStatus::kOk) {
+			const BrainInitStatus outputs_status = brain_.init_outputs();
+			if (!brain_init_succeeded(outputs_status)) {
+				std::printf("[ERROR] Outputs init failed\n");
+			}
+			brain_.outputs.set_output_range(
+				kOutputsChannelA, kOutputsRange0To10V);
+			brain_.outputs.set_output_range(
+				kOutputsChannelB, kOutputsRange0To10V);
+			brain_.outputs.set_voltage_millivolts(kOutputsChannelA, 0);
+			brain_.outputs.set_voltage_millivolts(kOutputsChannelB, 0);
+
+			const StorageStatus load_status = brain_.storage.read_cv_calibration(&working_cal_);
+			if (load_status == kStorageStatusOk) {
 				std::printf("Loaded calibration from flash\n");
 			} else if (
-				load_status == StorageStatus::kNotFound || load_status == StorageStatus::kCorrupt) {
+				load_status == kStorageStatusNotFound || load_status == kStorageStatusCorrupt) {
 				std::memset(&working_cal_, 0, sizeof(working_cal_));
 				std::printf(
 					"Calibration missing/corrupt (%s), using zero table\n",
@@ -203,12 +185,12 @@ class CalibrationApp {
 				std::printf("Calibration read failed (%s), using zero table\n", to_string(load_status));
 			}
 
-			layout_protected_ = brain::storage::is_layout_protected();
+			layout_protected_ = brain_.storage.is_layout_protected();
 			if (layout_protected_) {
-				leds_[kLedLayoutProtected].stop_blink();
-				leds_[kLedLayoutProtected].on();
+				brain_.leds.stop_blink(kLedLayoutProtected);
+				brain_.leds.on(kLedLayoutProtected);
 			} else {
-				leds_[kLedLayoutProtected].start_blink(250);
+				brain_.leds.start_blink(kLedLayoutProtected, 250);
 			}
 
 			enter_context();
@@ -226,9 +208,7 @@ class CalibrationApp {
 			drive_cv_outputs();
 			update_status_leds();
 
-			for (auto& led : leds_) {
-				led.update();
-			}
+			brain_.update_leds();
 
 			sleep_ms(2);
 		}
@@ -326,54 +306,54 @@ class CalibrationApp {
 		}
 
 		void toggle_channel() {
-			if (active_channel_ == AudioCvOutChannel::kChannelA) {
-				active_channel_ = AudioCvOutChannel::kChannelB;
+			if (active_channel_ == kOutputsChannelA) {
+				active_channel_ = kOutputsChannelB;
 			} else {
-				active_channel_ = AudioCvOutChannel::kChannelA;
+				active_channel_ = kOutputsChannelA;
 			}
 			enter_context();
 			std::printf(
 				"Active channel -> %s\n",
-				active_channel_ == AudioCvOutChannel::kChannelA ? "A" : "B");
+				active_channel_ == kOutputsChannelA ? "A" : "B");
 		}
 
 		void pulse_step_led() {
-			leds_[kLedStepPulse].off();
+			brain_.leds.off(kLedStepPulse);
 			if (active_step_ == 0) {
-				leds_[kLedStepPulse].blink(1, 350);
+				brain_.leds.blink(kLedStepPulse, 1, 350);
 				return;
 			}
-			leds_[kLedStepPulse].blink(static_cast<uint>(active_step_), 120);
+			brain_.leds.blink(kLedStepPulse, static_cast<uint>(active_step_), 120);
 		}
 
 		void pulse_save_success() {
-			leds_[kLedSaveResult].off();
-			leds_[kLedSaveResult].blink(2, 320);
+			brain_.leds.off(kLedSaveResult);
+			brain_.leds.blink(kLedSaveResult, 2, 320);
 		}
 
 		void pulse_save_failure() {
-			leds_[kLedSaveResult].off();
-			leds_[kLedSaveResult].blink(4, 100);
+			brain_.leds.off(kLedSaveResult);
+			brain_.leds.blink(kLedSaveResult, 4, 100);
 		}
 
 		void save_calibration() {
-			layout_protected_ = brain::storage::is_layout_protected();
-			if (!layout_protected_ && !brain::storage::kAllowUnprotectedLayout) {
+			layout_protected_ = brain_.storage.is_layout_protected();
+			if (!layout_protected_ && !kAllowUnprotectedLayout) {
 				std::printf("Save blocked: layout is not protected\n");
 				pulse_save_failure();
 				return;
 			}
 
-			const StorageStatus write_status = brain::storage::write_cv_calibration(&working_cal_);
-			if (write_status != StorageStatus::kOk) {
+			const StorageStatus write_status = brain_.storage.write_cv_calibration(&working_cal_);
+			if (write_status != kStorageStatusOk) {
 				std::printf("Save failed on write: %s\n", to_string(write_status));
 				pulse_save_failure();
 				return;
 			}
 
 			CvCalibrationV1 verify{};
-			const StorageStatus verify_status = brain::storage::read_cv_calibration(&verify);
-			if (verify_status != StorageStatus::kOk) {
+			const StorageStatus verify_status = brain_.storage.read_cv_calibration(&verify);
+			if (verify_status != kStorageStatusOk) {
 				std::printf("Save verify read failed: %s\n", to_string(verify_status));
 				pulse_save_failure();
 				return;
@@ -395,7 +375,7 @@ class CalibrationApp {
 				return nullptr;
 			}
 			const int idx = active_step_ - 1;
-			if (active_channel_ == AudioCvOutChannel::kChannelA) {
+			if (active_channel_ == kOutputsChannelA) {
 				return &working_cal_.a_offset_lsb[idx];
 			}
 			return &working_cal_.b_offset_lsb[idx];
@@ -406,7 +386,7 @@ class CalibrationApp {
 				return 0;
 			}
 			const int idx = active_step_ - 1;
-			if (active_channel_ == AudioCvOutChannel::kChannelA) {
+			if (active_channel_ == kOutputsChannelA) {
 				return working_cal_.a_offset_lsb[idx];
 			}
 			return working_cal_.b_offset_lsb[idx];
@@ -437,9 +417,9 @@ class CalibrationApp {
 			coarse_offset_lsb_ = coarse;
 			fine_offset_lsb_ = fine;
 
-			pots_.scan();
-			last_coarse_physical_ = coarse_from_adc(pots_.get_buffered(0));
-			last_fine_physical_ = fine_from_adc(pots_.get_buffered(1));
+			brain_.pots.scan();
+			last_coarse_physical_ = coarse_from_adc(brain_.pots.get_buffered(0));
+			last_fine_physical_ = fine_from_adc(brain_.pots.get_buffered(1));
 			coarse_pickup_armed_ = true;
 			fine_pickup_armed_ = true;
 		}
@@ -478,10 +458,10 @@ class CalibrationApp {
 		}
 
 		void update_pots() {
-			pots_.scan();
+			brain_.pots.scan();
 
-			const int coarse_physical = coarse_from_adc(pots_.get_buffered(0));
-			const int fine_physical = fine_from_adc(pots_.get_buffered(1));
+			const int coarse_physical = coarse_from_adc(brain_.pots.get_buffered(0));
+			const int fine_physical = fine_from_adc(brain_.pots.get_buffered(1));
 
 			if (active_step_ == 0) {
 				last_coarse_physical_ = coarse_physical;
@@ -511,35 +491,37 @@ class CalibrationApp {
 		}
 
 		void drive_cv_outputs() {
-			cv_out_.set_calibration(working_cal_);
+			brain_.outputs.set_calibration(working_cal_);
 
-			const float step_voltage = static_cast<float>(active_step_);
-			if (active_channel_ == AudioCvOutChannel::kChannelA) {
-				cv_out_.set_voltage_calibrated(AudioCvOutChannel::kChannelA, step_voltage);
-				cv_out_.set_voltage(AudioCvOutChannel::kChannelB, 0.0f);
+			const int32_t step_millivolts = static_cast<int32_t>(active_step_) * 1000;
+			if (active_channel_ == kOutputsChannelA) {
+				brain_.outputs.set_voltage_calibrated_millivolts(
+					kOutputsChannelA, step_millivolts);
+				brain_.outputs.set_voltage_millivolts(kOutputsChannelB, 0);
 			} else {
-				cv_out_.set_voltage_calibrated(AudioCvOutChannel::kChannelB, step_voltage);
-				cv_out_.set_voltage(AudioCvOutChannel::kChannelA, 0.0f);
+				brain_.outputs.set_voltage_calibrated_millivolts(
+					kOutputsChannelB, step_millivolts);
+				brain_.outputs.set_voltage_millivolts(kOutputsChannelA, 0);
 			}
 		}
 
 		void update_status_leds() {
-			if (active_channel_ == AudioCvOutChannel::kChannelA) {
-				leds_[kLedChannelA].on();
-				leds_[kLedChannelB].off();
+			if (active_channel_ == kOutputsChannelA) {
+				brain_.leds.on(kLedChannelA);
+				brain_.leds.off(kLedChannelB);
 			} else {
-				leds_[kLedChannelA].off();
-				leds_[kLedChannelB].on();
+				brain_.leds.off(kLedChannelA);
+				brain_.leds.on(kLedChannelB);
 			}
 
 			if (dirty_) {
-				leds_[kLedDirty].on();
+				brain_.leds.on(kLedDirty);
 			} else {
-				leds_[kLedDirty].off();
+				brain_.leds.off(kLedDirty);
 			}
 
 			if (layout_protected_) {
-				leds_[kLedLayoutProtected].on();
+				brain_.leds.on(kLedLayoutProtected);
 			}
 		}
 };

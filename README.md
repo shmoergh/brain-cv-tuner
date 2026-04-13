@@ -85,6 +85,8 @@ Use this checklist when upgrading an older Brain firmware so calibration written
 Add the storage reservation helper before `pico_sdk_init()` in your main CMakeList.txt:
 
 ```cmake
+set(BRAIN_STORAGE_ENABLE_FLASH_RESERVATION ON CACHE BOOL "" FORCE)
+set(BRAIN_STORAGE_ALLOW_UNPROTECTED_LAYOUT OFF CACHE BOOL "" FORCE)
 include(brain-sdk/cmake/brain-storage-reserve-flash.cmake)
 brain_storage_configure_flash_reservation()
 ```
@@ -96,15 +98,17 @@ This keeps the SDK calibration/app sectors outside the firmware image.
 If you want to use calibrated values in your firmware, add this in your init section:
 
 ```cpp
-#include "brain-io/audio-cv-out.h"
+#define BRAIN_USE_STORAGE 1
+#define BRAIN_USE_OUTPUTS 1
+#include "brain/brain.h"
 
-brain::io::AudioCvOut cv_out;
-cv_out.init();
-cv_out.set_coupling(brain::io::AudioCvOutChannel::kChannelA, brain::io::AudioCvOutCoupling::kDcCoupled);
-cv_out.set_coupling(brain::io::AudioCvOutChannel::kChannelB, brain::io::AudioCvOutCoupling::kDcCoupled);
+Brain brain;
+brain.init_outputs();
+brain.outputs.set_output_range(AudioCvOutChannel::kChannelA, AudioCvOutRange::kRange0To10V);
+brain.outputs.set_output_range(AudioCvOutChannel::kChannelB, AudioCvOutRange::kRange0To10V);
 
 // Optional: continue with raw output if missing/corrupt.
-cv_out.load_calibration_from_flash();
+brain.outputs.load_calibration_from_flash();
 ```
 
 ### 3) Switch output calls to calibrated writes
@@ -112,18 +116,20 @@ cv_out.load_calibration_from_flash();
 Replace raw calls:
 
 ```cpp
-cv_out.set_voltage(channel, volts);
+brain.outputs.set_voltage_millivolts(channel, millivolts);
 ```
 
 with:
 
 ```cpp
-cv_out.set_voltage_calibrated(channel, volts);
+brain.outputs.set_voltage_calibrated_millivolts(channel, millivolts);
 ```
+
+Example conversion: `1.25V -> 1250mV`.
 
 ### 4) If your firmware writes calibration, use SDK APIs only
 
-- Use `brain::storage::write_cv_calibration(...)` and verify with `read_cv_calibration(...)`.
+- Use `brain.storage.write_cv_calibration(...)` and verify with `brain.storage.read_cv_calibration(...)`.
 - Keep the SDK contract: `CvCalibrationV1` stores offsets for `1V..10V` only (`0V` is reference-only).
 - Do not write raw flash directly for calibration.
 
@@ -150,7 +156,8 @@ Recommended pattern:
 Example:
 
 ```cpp
-#include "brain-storage/storage.h"
+#define BRAIN_USE_STORAGE 1
+#include "brain/brain.h"
 
 struct AppStateV1 {
 	uint32_t schema_version;
@@ -160,13 +167,16 @@ struct AppStateV1 {
 
 constexpr uint32_t kAppStateSchemaV1 = 1;
 
+Brain brain;
+brain.init_storage();
+
 AppStateV1 state{};
 size_t actual_size = 0;
 
-brain::storage::StorageStatus load_status =
-	brain::storage::read_app_blob(&state, sizeof(state), &actual_size);
+StorageStatus load_status =
+	brain.storage.read_app_blob(&state, sizeof(state), &actual_size);
 
-if (load_status == brain::storage::StorageStatus::kOk &&
+if (load_status == StorageStatus::kOk &&
 	actual_size == sizeof(state) &&
 	state.schema_version == kAppStateSchemaV1) {
 	// Loaded successfully.
@@ -178,8 +188,8 @@ if (load_status == brain::storage::StorageStatus::kOk &&
 }
 
 // Later, when persisting:
-brain::storage::StorageStatus save_status =
-	brain::storage::write_app_blob(&state, sizeof(state));
+StorageStatus save_status =
+	brain.storage.write_app_blob(&state, sizeof(state));
 ```
 
 Status handling tips:
