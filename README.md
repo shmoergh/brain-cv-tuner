@@ -1,80 +1,79 @@
 # Brain CV Tuner
 
-Firmware for calibrating Brain CV outputs with a tuner-guided workflow. It lets you calibrate channel A and B across `0V..10V` in 1V steps for precise 1V/oct tracking. The calibration values are saved to Brain SDK calibration storage and persisted across firmwares which use the Brain SDK. This allows a single calibration to be automatically reused between different firmwares.
+This is a small firmware that helps you dial in the CV outputs on your Brain module so they're actually accurate. You walk through `0V` to `10V` in one-volt steps on both channel A and B, nudging each step until the output lands exactly where it should. The values you save get tucked away in the Brain SDK's calibration storage, which means any other Brain SDK firmware you flash later will pick them up automatically.
 
-## Build
+## Installation
 
-```bash
-./build-firmware.sh
-```
+You'll get two UF2 files out of the build — pick the one that matches your hardware:
 
-## Flash
+- `brain-cv-tuner-pico.uf2` for RP2040
+- `brain-cv-tuner-pico-2.uf2` for RP2350
 
-Flash one of the generated UF2 files to your Brain module by holding the BOOTSEL button while connecting it to your computer, then copy the .uf2 file to the mounted drive:
-
-- `brain-cv-tuner-pico.uf2` (RP2040)
-- `brain-cv-tuner-pico-2.uf2` (RP2350)
+To flash it, hold the BOOTSEL button while plugging the Brain into your computer. Once it shows up as a USB drive just drop the UF2 file onto it and it'll reboot into the firmware.
 
 ## CV Tuner User Guide
 
-### What You Need
+### What you need
 
-- Brain module running this firmware
-- A VCO with `1V/oct` pitch input
-- A tuner (hardware tuner or tuner plugin/app)
-- Patch cable from Brain CV out to the VCO pitch input
+The most reliable way to calibrate is with a multimeter, so that's what this guide assumes. You'll need:
 
-### Recommended Setup
+- Your Brain module running this firmware
+- A reasonably accurate multimeter (a decent handheld DMM is plenty, and the more precise it is the better the calibration)
+- A patch cable from the output to your meter's input
 
-1. Disconnect Brain from the VCO pitch input.
-2. Tune the VCO to `C0` using your tuner.
-3. Connect Brain output `A` (or `B`) to the VCO `1V/oct` input.
-4. Leave the tuner connected to the VCO audio output.
+If you'd rather calibrate by ear using a VCO and a tuner, that's covered further down in [Alternative: calibrating with a VCO and tuner](#alternative-calibrating-with-a-vco-and-tuner).
+
+### Setting up the multimeter
+
+Set your multimeter to DC voltage, on a range that covers `10V` (usually the `20V` DC range on a manual meter, or just leave it on auto). Connect the black probe to the Brain's ground (any sleeve/ring of an unused jack works), then connect the red probe to the tip of the CV output you're about to calibrate.
+
+That's the whole setup. You're going to step through each voltage and turn the pots until the meter shows the right number.
 
 ### Controls
 
-- `Button A (short)`: step down voltage (`10 -> 0`)
-- `Button B (short)`: step up voltage (`0 -> 10`)
-- `Button A (long, ~800ms)`: toggle active channel (`A <-> B`)
-- `Button A + B (hold ~1500ms)`: save calibration to flash
-- `Pot 1`: coarse tuning offset
-- `Pot 2`: fine tuning offset
+The two buttons walk you through the calibration steps and the pots do the actual tuning:
 
-Notes:
-- Step `0` (`0V`) is reference-only. Pot edits are ignored at this step.
-- Only the active channel outputs the selected calibration voltage. The inactive channel is held at `0V`.
-- After changing step or channel, pots use pickup behavior. You may need to turn a pot until it "catches" before it starts changing the offset.
+- **Button A (short press)**: step the voltage down (`10 → 0`)
+- **Button B (short press)**: step the voltage up (`0 → 10`)
+- **Button A (long press, ~800ms)**: switch between channel A and B
+- **Buttons A + B (hold ~1.5s)**: save your calibration to flash
+- **Pot 1**: coarse offset
+- **Pot 2**: fine offset
 
-### LED Feedback
+A couple of things worth knowing. Step `0` is just a reference point at `0V`, so the pots don't do anything there, which is expected. Only the channel you're working on actually outputs voltage; the other one is held at `0V` so you don't accidentally probe the wrong jack. And after you change steps or switch channels, the pots use pickup behavior, so you might need to turn one a bit before it "catches" and starts moving the offset.
 
-- `LED1`: channel A is active
-- `LED2`: channel B is active
-- `LED3`: unsaved changes (`dirty`)
-- `LED4`: save result
-- Success: 2 long pulses
-- Failure: 4 short pulses
-- `LED5`: storage layout protection status
-- Solid on: protected (save allowed)
-- Blinking: unprotected (save blocked unless unsafe override is compiled)
-- `LED6`: current step indicator
-- Step `1..10`: that many short pulses
-- Step `0`: one long pulse
+### What the LEDs are telling you
 
-### Calibration Workflow
+- **LED1**: channel A is the one you're editing
+- **LED2**: channel B is the one you're editing
+- **LED3**: you have unsaved changes
+- **LED4**: save result. Two long pulses means it worked, four short pulses means it didn't
+- **LED5**: storage layout status. Solid means everything's fine and saving is allowed. Blinking means the storage layout isn't protected, and saving is blocked (unless the firmware was built with the unsafe override)
+- **LED6**: which step you're on. Steps `1` through `10` show that many short pulses; step `0` is a single long pulse
 
-1. Start at step `0` and confirm your VCO is tuned to `C0` (reference point).
-2. Press `Button B` to go to step `1` (`1V`), then adjust with `Pot 1` and `Pot 2` until tuner reads `C1`.
-3. Repeat for each step up to `10` (`C10`).
-4. Long-press `Button A` to switch channel and repeat for the other output.
-5. Hold `Button A + Button B` for ~1.5s to save.
-6. Confirm save success on `LED4` and that `LED3` turns off.
+### Calibrating, step by step
 
-### Save and Persistence
+Start at step `0`. Your meter should read very close to `0V`, which is just the reference, with nothing to adjust. Press **Button B** to bump up to step `1`, which should output `1V`. Watch the meter and turn **Pot 1** for coarse changes, then **Pot 2** for fine adjustments, until the meter reads exactly `1.000V` (or as close as your meter resolves).
 
-- Calibration is saved only when you perform the explicit `A+B` hold.
-- Saved values persist across power cycles and firmware updates (as long as calibration storage is preserved).
-- If save fails, `LED4` shows failure pulses and `LED3` remains on.
-- Flashing firmware that does not reserve Brain SDK storage sectors can overwrite calibration data.
+Press **Button B** again to move to step `2` and repeat, adjusting until you see `2.000V`. Keep going all the way up to step `10` (`10.000V`). Each step is independent, so take your time on each one.
+
+Once channel A is done, long-press **Button A** to switch over to channel B (LED2 lights up). Move your probe over to the channel B output and run through the same `1V → 10V` walk.
+
+When both channels feel good, hold **Button A and B together** for about a second and a half. LED4 will flash two long pulses to confirm the save, and LED3 (the "unsaved changes" indicator) will turn off. That's it, you're calibrated.
+
+### Saving and what sticks around
+
+Nothing gets written to flash until you do the deliberate A+B hold, so you can experiment freely without worrying about clobbering anything. Once saved, the calibration survives power cycles and firmware updates, as long as whatever you flash next reserves the Brain SDK storage sectors (most SDK-based firmwares do).
+
+If the save fails for some reason, LED4 will show the failure pattern and LED3 will stay on so you know your changes didn't make it. Flashing a firmware that doesn't respect the SDK storage layout is the main way you'd lose calibration data, so be a little careful with non-SDK firmwares.
+
+### Alternative: calibrating with a VCO and tuner
+
+If you don't have a multimeter handy, you can calibrate by ear-and-eye using a VCO and a chromatic tuner. It's less precise than a meter but works in a pinch.
+
+You'll need a VCO with a `1V/oct` pitch input, a tuner (hardware unit or a plugin/app), and a patch cable. Start by disconnecting Brain from the VCO entirely and tuning the VCO to `C0` using just the tuner. Once that's set, patch Brain's output A (or B) into the VCO's `1V/oct` input and leave the tuner watching the VCO's audio output.
+
+From there the workflow is the same as above. Step up through `1V`, `2V`, and so on, but instead of watching a meter you're adjusting until the tuner reads `C1`, `C2`, etc. Keep in mind that VCO tuning drifts with temperature and the tuner itself has its own accuracy limits, so a meter will generally give you a cleaner result.
 
 ## Migrating Older Firmwares to Brain SDK Storage
 
@@ -213,4 +212,12 @@ git pull origin main
 cd ..
 git add brain-sdk
 git commit -m "Update brain-sdk"
+```
+
+## Build
+
+To build the firmware, run:
+
+```bash
+./build-firmware.sh
 ```
