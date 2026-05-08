@@ -158,6 +158,7 @@ class CalibrationApp {
 			if (!brain_init_succeeded(pots_status)) {
 				std::printf("[ERROR] Pots init failed\n");
 			}
+			brain_.update_pots();
 
 			const BrainInitStatus outputs_status = brain_.init_outputs();
 			if (!brain_init_succeeded(outputs_status)) {
@@ -203,6 +204,7 @@ class CalibrationApp {
 			button_b_.update();
 			maybe_handle_holds();
 
+			brain_.update_pots();
 			update_pots();
 			drive_cv_outputs();
 			update_status_leds();
