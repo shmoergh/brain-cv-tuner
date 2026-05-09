@@ -158,7 +158,7 @@ class CalibrationApp {
 			if (!brain_init_succeeded(pots_status)) {
 				std::printf("[ERROR] Pots init failed\n");
 			}
-			brain_.pots.scan();
+			brain_.update_pots();
 
 			const BrainInitStatus outputs_status = brain_.init_outputs();
 			if (!brain_init_succeeded(outputs_status)) {
@@ -204,6 +204,7 @@ class CalibrationApp {
 			button_b_.update();
 			maybe_handle_holds();
 
+			brain_.update_pots();
 			update_pots();
 			drive_cv_outputs();
 			update_status_leds();
@@ -417,7 +418,6 @@ class CalibrationApp {
 			coarse_offset_lsb_ = coarse;
 			fine_offset_lsb_ = fine;
 
-			brain_.pots.scan();
 			last_coarse_physical_ = coarse_from_adc(brain_.pots.get_buffered(0));
 			last_fine_physical_ = fine_from_adc(brain_.pots.get_buffered(1));
 			coarse_pickup_armed_ = true;
@@ -458,8 +458,6 @@ class CalibrationApp {
 		}
 
 		void update_pots() {
-			brain_.pots.scan();
-
 			const int coarse_physical = coarse_from_adc(brain_.pots.get_buffered(0));
 			const int fine_physical = fine_from_adc(brain_.pots.get_buffered(1));
 
